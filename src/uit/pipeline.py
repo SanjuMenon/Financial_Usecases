@@ -100,9 +100,12 @@ def _write_markdown_report(
 
 def _write_html_report(
     *,
-    title: str,
+    page_title: str,
+    heading: str,
+    subtitle: str,
     model_metrics: dict[str, object],
     shap_global: pd.DataFrame,
+    shap_narrative_html: str,
     causal_effects: pd.DataFrame,
     top_cases: pd.DataFrame,
     shap_plot_path: Path | None,
@@ -129,12 +132,70 @@ def _write_html_report(
     c0 = rep.get("0", {})
     c1 = rep.get("1", {})
 
+    # Plain-language "why" for business / compliance readers (non-technical).
+    business_summary_section = """
+    <h2>What this tool is for</h2>
+    <div class="card biz">
+      <p class="sub" style="margin-top:0">
+        <strong>The problem:</strong> Companies and regulators see huge volumes of insider trades (Form 4–style filings).
+        Most activity is routine or legitimate; a small fraction may warrant investigation. Humans cannot review every trade
+        with equal depth—so teams need a <strong>fair, repeatable way to prioritize</strong> which trades to look at first.
+      </p>
+      <p class="sub">
+        <strong>What this prototype does:</strong> It assigns each trade a <strong>risk score</strong>—how much it resembles
+        patterns linked to unlawful insider trading in the training data—then shows <strong>which inputs mattered most</strong>
+        for that score. That combination supports triage: focus on high scores, and use the explanations to start a structured review
+        (not to replace legal judgment).
+      </p>
+      <p class="sub">
+        <strong>Why “explain” matters for the business:</strong> A score alone is hard to defend in audit or management review.
+        Showing drivers (e.g. role, valuation, market conditions) helps answer <em>“Why did this trade rank high?”</em> and supports
+        documentation. The report below includes global drivers (SHAP) and a short causal-style summary from a causal forest—
+        useful for exploration, not as proof of wrongdoing.
+      </p>
+      <p class="muted" style="margin-bottom:0">
+        <strong>Scope:</strong> This page is generated from <strong>mock / synthetic data</strong> for demonstration.
+        In production you would calibrate thresholds, validate on real labeled cases, and align workflow with legal and compliance policy.
+      </p>
+    </div>
+"""
+
+    # Static section: what data this pipeline uses (mock vs real-world analogs).
+    datasets_section = """
+    <h2>Datasets behind this report</h2>
+    <div class="card">
+      <p class="sub" style="margin-top:0">
+        This run uses <strong>synthetic mock data</strong> generated to mirror the <em>shape</em> of the research setup
+        (insider filings + market panel + fundamentals + labels). It is <strong>not</strong> a download of live SEC, CRSP, or Compustat feeds.
+      </p>
+      <h3>Mock files (from <code>uv run uit mock</code>)</h3>
+      <ul class="ds">
+        <li><code>mock_data/form4_trades.parquet</code> — Insider-like transactions (roles, acquisition/disposition, merged features) and a synthetic <code>label_uit</code> for training/evaluation.</li>
+        <li><code>mock_data/crsp_daily.parquet</code> — Daily market-style panel: returns, prices, volume, and spread proxies (analogous to CRSP-style inputs in the paper).</li>
+        <li><code>mock_data/compustat_quarterly.parquet</code> — Quarterly fundamentals (e.g. valuation and ratio-style fields), analogous to Compustat/Capital IQ in the paper.</li>
+        <li><code>mock_data/link.parquet</code> — Crosswalk: <code>cik</code>, <code>gvkey</code>, <code>permno</code>, ticker — used to join trades to fundamentals and market data.</li>
+        <li><code>mock_data/enforcement_labels.parquet</code> — Mock subset of “enforcement-style” positive labels (illustrative only).</li>
+        <li><code>mock_data/new_trades.parquet</code> — Unlabeled trades for inference / scoring demos (no <code>label_uit</code>).</li>
+      </ul>
+      <h3>Real-world sources the paper cites</h3>
+      <ul class="ds">
+        <li><strong>SEC EDGAR</strong> — Form 4 beneficial ownership filings (insider trades).</li>
+        <li><strong>CRSP</strong> — Stock returns, prices, volume, and inputs for risk factors (e.g. market beta).</li>
+        <li><strong>Compustat / Capital IQ</strong> — Firm fundamentals and valuation ratios.</li>
+        <li><strong>Labels</strong> — In the paper, unlawful trades are identified from public SEC litigation / complaints matched to filers (not reproduced in this mock).</li>
+      </ul>
+      <p class="muted" style="margin-bottom:0">
+        Features fed to the model in this repo are a <strong>small subset</strong> of the paper’s full feature set; see the project README for the exact column names used in training and scoring.
+      </p>
+    </div>
+"""
+
     html = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title}</title>
+  <title>{page_title}</title>
   <style>
     :root {{
       --bg: #0b0f14;
@@ -152,7 +213,8 @@ def _write_html_report(
       line-height: 1.4;
     }}
     .wrap {{ max-width: 1100px; margin: 28px auto; padding: 0 16px; }}
-    h1 {{ margin: 0 0 10px; font-size: 22px; }}
+    h1 {{ margin: 0 0 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }}
+    .sub {{ color: var(--muted); font-size: 15px; max-width: 72ch; margin: 0 0 6px; line-height: 1.5; }}
     h2 {{ margin: 22px 0 10px; font-size: 18px; }}
     h3 {{ margin: 0 0 10px; font-size: 15px; }}
     .muted {{ color: var(--muted); font-size: 13px; }}
@@ -201,14 +263,23 @@ def _write_html_report(
       background: #0a0f17;
     }}
     a {{ color: var(--accent); }}
+    ul.ds {{ margin: 8px 0 14px; padding-left: 1.25rem; color: var(--text); font-size: 14px; line-height: 1.55; }}
+    ul.ds li {{ margin: 6px 0; }}
+    ul.ds strong {{ color: var(--text); }}
+    .biz .sub {{ max-width: none; margin-bottom: 12px; }}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>{title}</h1>
-    <div class="muted">Generated by the UIT pipeline.</div>
+    <h1>{heading}</h1>
+    <p class="sub">{subtitle}</p>
+    <div class="muted">Mock data run · XGBoost classifier · SHAP explanations · causal forest summary</div>
 
-    <h2>Model performance (holdout)</h2>
+    {business_summary_section}
+
+    {datasets_section}
+
+    <h2>Model accuracy (holdout test set)</h2>
     <div class="card">
       <div class="kpi">
         <div class="k"><div class="v">{auc:.4f}</div><div class="l">ROC AUC</div></div>
@@ -221,23 +292,24 @@ def _write_html_report(
       </div>
     </div>
 
-    <h2>SHAP</h2>
+    <h2>What drives the risk score? (SHAP)</h2>
     <div class="grid">
       <div class="card">
         <h3>Global drivers</h3>
         <div class="muted">Ranked by mean |SHAP| on the holdout set.</div>
+        {shap_narrative_html}
         {_df_html(shap_global.head(20))}
       </div>
       {img_html}
     </div>
 
-    <h2>Causal forest</h2>
+    <h2>Causal-style summary (causal forest)</h2>
     <div class="card">
       <div class="muted">Mean marginal effects (mocked setup; interpret direction/relative strength).</div>
       {_df_html(causal_effects)}
     </div>
 
-    <h2>Top flagged trades (examples)</h2>
+    <h2>Highest-risk trades (examples)</h2>
     <div class="card">
       <div class="muted">Highest <code>uit_risk</code> rows with their top driver features.</div>
       {_df_html(top_cases)}
@@ -249,7 +321,116 @@ def _write_html_report(
     out_path.write_text(html, encoding="utf-8")
     return out_path
 
-def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict[str, object]:
+
+def _maybe_generate_shap_narrative_html(
+    *,
+    shap_summary: pd.DataFrame,
+    openai_model: str,
+    enabled: bool,
+) -> str:
+    """
+    Returns a small HTML block with a natural-language summary of SHAP drivers.
+    If disabled or no API key is present, returns an empty string.
+    """
+    import html as _html
+
+    if not enabled:
+        return ""
+
+    try:
+        from dotenv import load_dotenv
+
+        import os
+        load_dotenv()
+        # Resolve repo root (…/src/uit/pipeline.py → parents[2]) so .env loads even if cwd differs.
+        _repo_root = Path(__file__).resolve().parent.parent.parent
+        load_dotenv(_repo_root / ".env", override=False)
+        load_dotenv(override=False)
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return _llm_notice_html(
+                "Plain-language interpretation was requested, but <code>OPENAI_API_KEY</code> was not found. "
+                "Set it in <code>.env</code> at the project root (same folder as <code>pyproject.toml</code>), "
+                "or export it in your shell, then re-run."
+            )
+
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+
+        top = shap_summary.head(8).copy()
+        # keep only the essentials in the prompt
+        driver_lines = "\n".join(
+            [
+                f"- {r.feature}: mean_abs_shap={float(r.mean_abs_shap):.6f}, mean_shap={float(r.mean_shap):+.6f}"
+                for r in top.itertuples(index=False)
+            ]
+        )
+
+        prompt = f"""You are writing a short, business-friendly explanation for a model report on insider-trading risk scoring.
+
+Context:
+- The model outputs a 'risk score' per trade.
+- SHAP global drivers show which inputs most influence the score.
+- mean_abs_shap = strength/importance (bigger = more influence).
+- mean_shap sign gives typical direction (positive pushes risk higher; negative pushes lower), but relationships can be non-linear.
+
+Top drivers:
+{driver_lines}
+
+Write:
+1) A 3–6 sentence plain-English summary of what the top drivers suggest (avoid math, avoid jargon).
+2) A bullet list with 1 short line per driver: what it is and how it tends to move risk (higher/lower/mixed).
+3) One caution sentence: “risk score ≠ proof” and requires human review.
+
+Keep it concise and readable for a compliance/business audience. Do NOT mention OpenAI, APIs, or prompts.
+"""
+
+        # Prefer Chat Completions (widely supported); Responses API varies by SDK/model.
+        resp = client.chat.completions.create(
+            model=openai_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if not text:
+            return _llm_notice_html(
+                "The LLM returned an empty response. Try a different <code>--openai-model</code> (e.g. <code>gpt-4o-mini</code>)."
+            )
+
+        safe = _html.escape(text)
+        return f"""
+        <div class="card" style="margin-top:12px; background: rgba(0,0,0,0.10);">
+          <h3 style="margin-bottom:6px">Plain-language interpretation</h3>
+          <div class="muted">Auto-generated summary of the top drivers.</div>
+          <pre style="white-space:pre-wrap; margin:10px 0 0; font-size:13px; color: var(--text);">{safe}</pre>
+        </div>
+        """
+    except Exception as e:
+        msg = _html.escape(str(e)[:500])
+        return _llm_notice_html(
+            f"Plain-language interpretation failed: <code>{msg}</code>. "
+            "Check your API key, model name, and network access, then re-run."
+        )
+
+
+def _llm_notice_html(message: str) -> str:
+    return f"""
+        <div class="card" style="margin-top:12px; border-color: #8b5a2b; background: rgba(139,90,43,0.12);">
+          <h3 style="margin-bottom:6px">Plain-language interpretation</h3>
+          <div class="muted">Could not generate the LLM summary.</div>
+          <p style="margin:10px 0 0; font-size:14px; line-height:1.55;">{message}</p>
+        </div>
+        """
+
+def run_xgb_shap_causal(
+    form4_trades: pd.DataFrame,
+    cfg: PipelineConfig,
+    *,
+    llm_explain: bool = False,
+    openai_model: str = "gpt-4o-mini",
+) -> dict[str, object]:
     """
     Train XGBoost -> SHAP global importance -> econml CausalForestDML ATE (demo).
     """
@@ -300,10 +481,11 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
         contrib = model.get_booster().predict(dtest, pred_contribs=True)
         # last column is the bias term
         shap_values = contrib[:, :-1]
-    # global importance
+    # global importance (+ direction proxy)
     mean_abs = np.abs(shap_values).mean(axis=0)
+    mean_signed = np.asarray(shap_values).mean(axis=0)
     shap_rank = (
-        pd.DataFrame({"feature": X_test.columns, "mean_abs_shap": mean_abs})
+        pd.DataFrame({"feature": X_test.columns, "mean_abs_shap": mean_abs, "mean_shap": mean_signed})
         .sort_values("mean_abs_shap", ascending=False)
         .reset_index(drop=True)
     )
@@ -393,7 +575,7 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
     report_out = cfg.artifacts_dir / "uit_report.md"
     _write_markdown_report(
         cfg=cfg,
-        title="UIT report",
+        title="Insider trading detection — model report (mock data)",
         model_metrics={"auc": auc, "report": report},
         shap_global=shap_rank,
         causal_effects=ate_df,
@@ -403,10 +585,22 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
         out_path=report_out,
     )
     html_out = cfg.artifacts_dir / "uit_report.html"
+    shap_narrative_html = _maybe_generate_shap_narrative_html(
+        shap_summary=shap_rank,
+        openai_model=openai_model,
+        enabled=llm_explain,
+    )
     _write_html_report(
-        title="UIT report",
+        page_title="Insider trading detection — model report",
+        heading="Insider trading risk: scores and explanations",
+        subtitle=(
+            "This report shows how well the model separates higher-risk insider trades from lower-risk ones, "
+            "which inputs most influence those scores (SHAP), and a short causal-style summary from the causal forest. "
+            "“UIT” means unlawful insider trading in this project."
+        ),
         model_metrics={"auc": auc, "report": report},
         shap_global=shap_rank,
+        shap_narrative_html=shap_narrative_html,
         causal_effects=ate_df,
         top_cases=top_cases[["trade_id", "cik", "personid", "transaction_date", "uit_risk", "top_drivers"]],
         shap_plot_path=(cfg.artifacts_dir / "shap_beeswarm.png"),

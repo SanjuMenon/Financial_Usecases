@@ -34,7 +34,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     form4 = pd.read_parquet(form4_path)
     cfg = PipelineConfig(seed=args.seed, artifacts_dir=Path(args.artifacts_dir))
-    results = run_xgb_shap_causal(form4, cfg)
+    results = run_xgb_shap_causal(
+        form4,
+        cfg,
+        llm_explain=args.llm_explain,
+        openai_model=args.openai_model,
+    )
     print(json.dumps(results, indent=2))
     return 0
 
@@ -71,6 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--in-dir", default="mock_data", help="Directory containing parquet files")
     pr.add_argument("--artifacts-dir", default="artifacts", help="Where to write reports/plots")
     pr.add_argument("--seed", type=int, default=7)
+    pr.add_argument("--llm-explain", action="store_true", help="Add natural-language SHAP summary to HTML report (uses OPENAI_API_KEY)")
+    pr.add_argument("--openai-model", default="gpt-4o-mini", help="OpenAI model for the narrative summary")
     pr.set_defaults(func=_cmd_run)
 
     ps = sub.add_parser("score", help="Train on labeled data, score a new file (csv/parquet)")
