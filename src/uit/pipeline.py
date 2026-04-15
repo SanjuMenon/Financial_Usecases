@@ -131,6 +131,64 @@ def _write_html_report(
     c0 = rep.get("0", {})
     c1 = rep.get("1", {})
 
+    # Plain-language "why" for business / compliance readers (non-technical).
+    business_summary_section = """
+    <h2>What this tool is for</h2>
+    <div class="card biz">
+      <p class="sub" style="margin-top:0">
+        <strong>The problem:</strong> Companies and regulators see huge volumes of insider trades (Form 4–style filings).
+        Most activity is routine or legitimate; a small fraction may warrant investigation. Humans cannot review every trade
+        with equal depth—so teams need a <strong>fair, repeatable way to prioritize</strong> which trades to look at first.
+      </p>
+      <p class="sub">
+        <strong>What this prototype does:</strong> It assigns each trade a <strong>risk score</strong>—how much it resembles
+        patterns linked to unlawful insider trading in the training data—then shows <strong>which inputs mattered most</strong>
+        for that score. That combination supports triage: focus on high scores, and use the explanations to start a structured review
+        (not to replace legal judgment).
+      </p>
+      <p class="sub">
+        <strong>Why “explain” matters for the business:</strong> A score alone is hard to defend in audit or management review.
+        Showing drivers (e.g. role, valuation, market conditions) helps answer <em>“Why did this trade rank high?”</em> and supports
+        documentation. The report below includes global drivers (SHAP) and a short causal-style summary from a causal forest—
+        useful for exploration, not as proof of wrongdoing.
+      </p>
+      <p class="muted" style="margin-bottom:0">
+        <strong>Scope:</strong> This page is generated from <strong>mock / synthetic data</strong> for demonstration.
+        In production you would calibrate thresholds, validate on real labeled cases, and align workflow with legal and compliance policy.
+      </p>
+    </div>
+"""
+
+    # Static section: what data this pipeline uses (mock vs real-world analogs).
+    datasets_section = """
+    <h2>Datasets behind this report</h2>
+    <div class="card">
+      <p class="sub" style="margin-top:0">
+        This run uses <strong>synthetic mock data</strong> generated to mirror the <em>shape</em> of the research setup
+        (insider filings + market panel + fundamentals + labels). It is <strong>not</strong> a download of live SEC, CRSP, or Compustat feeds.
+      </p>
+      <h3>Mock files (from <code>uv run uit mock</code>)</h3>
+      <ul class="ds">
+        <li><code>mock_data/form4_trades.parquet</code> — Insider-like transactions (roles, acquisition/disposition, merged features) and a synthetic <code>label_uit</code> for training/evaluation.</li>
+        <li><code>mock_data/crsp_daily.parquet</code> — Daily market-style panel: returns, prices, volume, and spread proxies (analogous to CRSP-style inputs in the paper).</li>
+        <li><code>mock_data/compustat_quarterly.parquet</code> — Quarterly fundamentals (e.g. valuation and ratio-style fields), analogous to Compustat/Capital IQ in the paper.</li>
+        <li><code>mock_data/link.parquet</code> — Crosswalk: <code>cik</code>, <code>gvkey</code>, <code>permno</code>, ticker — used to join trades to fundamentals and market data.</li>
+        <li><code>mock_data/enforcement_labels.parquet</code> — Mock subset of “enforcement-style” positive labels (illustrative only).</li>
+        <li><code>mock_data/new_trades.parquet</code> — Unlabeled trades for inference / scoring demos (no <code>label_uit</code>).</li>
+      </ul>
+      <h3>Real-world sources the paper cites</h3>
+      <ul class="ds">
+        <li><strong>SEC EDGAR</strong> — Form 4 beneficial ownership filings (insider trades).</li>
+        <li><strong>CRSP</strong> — Stock returns, prices, volume, and inputs for risk factors (e.g. market beta).</li>
+        <li><strong>Compustat / Capital IQ</strong> — Firm fundamentals and valuation ratios.</li>
+        <li><strong>Labels</strong> — In the paper, unlawful trades are identified from public SEC litigation / complaints matched to filers (not reproduced in this mock).</li>
+      </ul>
+      <p class="muted" style="margin-bottom:0">
+        Features fed to the model in this repo are a <strong>small subset</strong> of the paper’s full feature set; see the project README for the exact column names used in training and scoring.
+      </p>
+    </div>
+"""
+
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -204,6 +262,10 @@ def _write_html_report(
       background: #0a0f17;
     }}
     a {{ color: var(--accent); }}
+    ul.ds {{ margin: 8px 0 14px; padding-left: 1.25rem; color: var(--text); font-size: 14px; line-height: 1.55; }}
+    ul.ds li {{ margin: 6px 0; }}
+    ul.ds strong {{ color: var(--text); }}
+    .biz .sub {{ max-width: none; margin-bottom: 12px; }}
   </style>
 </head>
 <body>
@@ -211,6 +273,10 @@ def _write_html_report(
     <h1>{heading}</h1>
     <p class="sub">{subtitle}</p>
     <div class="muted">Mock data run · XGBoost classifier · SHAP explanations · causal forest summary</div>
+
+    {business_summary_section}
+
+    {datasets_section}
 
     <h2>Model accuracy (holdout test set)</h2>
     <div class="card">
