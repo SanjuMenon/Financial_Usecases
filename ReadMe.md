@@ -41,6 +41,10 @@ Outputs:
 - `artifacts/uit_report.html` (human-readable HTML report)
 - `artifacts/top_flagged_trades.csv` (examples)
 
+**Preview the HTML report in the browser** (via [htmlpreview.github.io](https://htmlpreview.github.io/)):
+
+[Open `uit_report.html` preview](https://htmlpreview.github.io/?https://github.com/SanjuMenon/Financial_Usecases/blob/insider_trading/artifacts/uit_report.html)
+
 ### Score new data (inference)
 
 If you have a new trades file (CSV or Parquet) that includes the required feature columns, you can score it:
