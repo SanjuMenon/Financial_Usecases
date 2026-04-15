@@ -1,4 +1,4 @@
-## UIT report
+## Insider trading detection — model report (mock data)
 
 ### Model performance (holdout)
 - **ROC AUC**: 0.6009
