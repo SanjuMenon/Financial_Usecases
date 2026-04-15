@@ -10,18 +10,18 @@
 ### SHAP (global drivers)
 Ranked by mean |SHAP| on the holdout set. Higher means the feature more strongly drives predictions.
 
-| feature               |   mean_abs_shap |
-|-----------------------|-----------------|
-| is_director           |      0.448687   |
-| acq_disp_D            |      0.147658   |
-| market_beta           |      0.125289   |
-| prc_op_earnings_basic |      0.106493   |
-| sprd_rtn              |      0.0972849  |
-| ret                   |      0.0967089  |
-| price_to_book         |      0.0942291  |
-| hml_beta              |      0.0728621  |
-| is_officer            |      0.0100325  |
-| ten_percent_owner     |      0.00520309 |
+| feature               |   mean_abs_shap |    mean_shap |
+|-----------------------|-----------------|--------------|
+| is_director           |      0.448687   | -0.0925673   |
+| acq_disp_D            |      0.147658   | -0.0115883   |
+| market_beta           |      0.125289   | -0.0126923   |
+| prc_op_earnings_basic |      0.106493   | -0.0123649   |
+| sprd_rtn              |      0.0972849  | -0.00497394  |
+| ret                   |      0.0967089  | -0.00902374  |
+| price_to_book         |      0.0942291  | -0.00954487  |
+| hml_beta              |      0.0728621  | -0.00493279  |
+| is_officer            |      0.0100325  | -0.000396418 |
+| ten_percent_owner     |      0.00520309 | -9.74797e-05 |
 
 ### Causal forest (summary)
 Mean marginal effects from the causal forest (mocked setup; interpret as direction/relative strength).

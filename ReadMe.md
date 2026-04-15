@@ -33,6 +33,18 @@ This writes:
 uv run uit run --in-dir mock_data --artifacts-dir artifacts
 ```
 
+To also generate a **plain-English narrative** of the top SHAP drivers in the HTML report (uses `OPENAI_API_KEY` from `.env`):
+
+```bash
+uv run uit run --in-dir mock_data --artifacts-dir artifacts --llm-explain
+```
+
+Optional model override:
+
+```bash
+uv run uit run --in-dir mock_data --artifacts-dir artifacts --llm-explain --openai-model gpt-4.1-mini
+```
+
 Outputs:
 - `artifacts/shap_global_ranking.csv`
 - `artifacts/shap_beeswarm.png`

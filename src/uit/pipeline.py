@@ -105,6 +105,7 @@ def _write_html_report(
     subtitle: str,
     model_metrics: dict[str, object],
     shap_global: pd.DataFrame,
+    shap_narrative_html: str,
     causal_effects: pd.DataFrame,
     top_cases: pd.DataFrame,
     shap_plot_path: Path | None,
@@ -296,6 +297,7 @@ def _write_html_report(
       <div class="card">
         <h3>Global drivers</h3>
         <div class="muted">Ranked by mean |SHAP| on the holdout set.</div>
+        {shap_narrative_html}
         {_df_html(shap_global.head(20))}
       </div>
       {img_html}
@@ -319,7 +321,91 @@ def _write_html_report(
     out_path.write_text(html, encoding="utf-8")
     return out_path
 
-def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict[str, object]:
+
+def _maybe_generate_shap_narrative_html(
+    *,
+    shap_summary: pd.DataFrame,
+    openai_model: str,
+    enabled: bool,
+) -> str:
+    """
+    Returns a small HTML block with a natural-language summary of SHAP drivers.
+    If disabled or no API key is present, returns an empty string.
+    """
+    if not enabled:
+        return ""
+
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(override=False)
+        import os
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return ""
+
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+
+        top = shap_summary.head(8).copy()
+        # keep only the essentials in the prompt
+        driver_lines = "\n".join(
+            [
+                f"- {r.feature}: mean_abs_shap={float(r.mean_abs_shap):.6f}, mean_shap={float(r.mean_shap):+.6f}"
+                for r in top.itertuples(index=False)
+            ]
+        )
+
+        prompt = f"""You are writing a short, business-friendly explanation for a model report on insider-trading risk scoring.
+
+Context:
+- The model outputs a 'risk score' per trade.
+- SHAP global drivers show which inputs most influence the score.
+- mean_abs_shap = strength/importance (bigger = more influence).
+- mean_shap sign gives typical direction (positive pushes risk higher; negative pushes lower), but relationships can be non-linear.
+
+Top drivers:
+{driver_lines}
+
+Write:
+1) A 3–6 sentence plain-English summary of what the top drivers suggest (avoid math, avoid jargon).
+2) A bullet list with 1 short line per driver: what it is and how it tends to move risk (higher/lower/mixed).
+3) One caution sentence: “risk score ≠ proof” and requires human review.
+
+Keep it concise and readable for a compliance/business audience. Do NOT mention OpenAI, APIs, or prompts.
+"""
+
+        resp = client.responses.create(
+            model=openai_model,
+            input=prompt,
+        )
+        text = (resp.output_text or "").strip()
+        if not text:
+            return ""
+
+        # Minimal escaping; keep it simple as <pre>-style block.
+        import html as _html
+
+        safe = _html.escape(text)
+        return f"""
+        <div class="card" style="margin-top:12px; background: rgba(0,0,0,0.10);">
+          <h3 style="margin-bottom:6px">Plain-language interpretation</h3>
+          <div class="muted">Auto-generated summary of the top drivers.</div>
+          <pre style="white-space:pre-wrap; margin:10px 0 0; font-size:13px; color: var(--text);">{safe}</pre>
+        </div>
+        """
+    except Exception:
+        return ""
+
+def run_xgb_shap_causal(
+    form4_trades: pd.DataFrame,
+    cfg: PipelineConfig,
+    *,
+    llm_explain: bool = False,
+    openai_model: str = "gpt-4.1-mini",
+) -> dict[str, object]:
     """
     Train XGBoost -> SHAP global importance -> econml CausalForestDML ATE (demo).
     """
@@ -370,10 +456,11 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
         contrib = model.get_booster().predict(dtest, pred_contribs=True)
         # last column is the bias term
         shap_values = contrib[:, :-1]
-    # global importance
+    # global importance (+ direction proxy)
     mean_abs = np.abs(shap_values).mean(axis=0)
+    mean_signed = np.asarray(shap_values).mean(axis=0)
     shap_rank = (
-        pd.DataFrame({"feature": X_test.columns, "mean_abs_shap": mean_abs})
+        pd.DataFrame({"feature": X_test.columns, "mean_abs_shap": mean_abs, "mean_shap": mean_signed})
         .sort_values("mean_abs_shap", ascending=False)
         .reset_index(drop=True)
     )
@@ -473,6 +560,11 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
         out_path=report_out,
     )
     html_out = cfg.artifacts_dir / "uit_report.html"
+    shap_narrative_html = _maybe_generate_shap_narrative_html(
+        shap_summary=shap_rank,
+        openai_model=openai_model,
+        enabled=llm_explain,
+    )
     _write_html_report(
         page_title="Insider trading detection — model report",
         heading="Insider trading risk: scores and explanations",
@@ -483,6 +575,7 @@ def run_xgb_shap_causal(form4_trades: pd.DataFrame, cfg: PipelineConfig) -> dict
         ),
         model_metrics={"auc": auc, "report": report},
         shap_global=shap_rank,
+        shap_narrative_html=shap_narrative_html,
         causal_effects=ate_df,
         top_cases=top_cases[["trade_id", "cik", "personid", "transaction_date", "uit_risk", "top_drivers"]],
         shap_plot_path=(cfg.artifacts_dir / "shap_beeswarm.png"),
