@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--artifacts-dir", default="artifacts", help="Where to write reports/plots")
     pr.add_argument("--seed", type=int, default=7)
     pr.add_argument("--llm-explain", action="store_true", help="Add natural-language SHAP summary to HTML report (uses OPENAI_API_KEY)")
-    pr.add_argument("--openai-model", default="gpt-4.1-mini", help="OpenAI model for the narrative summary")
+    pr.add_argument("--openai-model", default="gpt-4o-mini", help="OpenAI model for the narrative summary")
     pr.set_defaults(func=_cmd_run)
 
     ps = sub.add_parser("score", help="Train on labeled data, score a new file (csv/parquet)")

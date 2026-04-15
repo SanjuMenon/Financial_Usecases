@@ -158,6 +158,24 @@
         <h3>Global drivers</h3>
         <div class="muted">Ranked by mean |SHAP| on the holdout set.</div>
         
+        <div class="card" style="margin-top:12px; background: rgba(0,0,0,0.10);">
+          <h3 style="margin-bottom:6px">Plain-language interpretation</h3>
+          <div class="muted">Auto-generated summary of the top drivers.</div>
+          <pre style="white-space:pre-wrap; margin:10px 0 0; font-size:13px; color: var(--text);">1) The top drivers of insider-trading risk scores indicate that certain factors significantly influence the likelihood of risky trades. Notably, being a director tends to increase risk, while other factors like market behavior and financial metrics can have varying effects. Understanding these drivers helps in assessing potential insider trading risks more effectively.
+
+2) **Top Drivers:**
+   - **is_director:** Indicates if the individual is a director; typically increases risk.
+   - **acq_disp_D:** Reflects acquisition or disposal activity; generally lowers risk.
+   - **market_beta:** Measures market volatility; usually lowers risk.
+   - **prc_op_earnings_basic:** Relates to basic earnings; tends to lower risk.
+   - **sprd_rtn:** Indicates spread returns; has a minor lowering effect on risk.
+   - **ret:** Represents returns; generally lowers risk.
+   - **price_to_book:** Compares market price to book value; tends to lower risk.
+   - **hml_beta:** Measures value versus growth; has a slight lowering effect on risk.
+
+Caution: The risk score does not equal proof of insider trading and requires human review for accurate interpretation.</pre>
+        </div>
+        
         <table class="dataframe tbl">
   <thead>
     <tr style="text-align: right;">

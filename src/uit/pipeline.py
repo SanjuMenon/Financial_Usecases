@@ -332,18 +332,28 @@ def _maybe_generate_shap_narrative_html(
     Returns a small HTML block with a natural-language summary of SHAP drivers.
     If disabled or no API key is present, returns an empty string.
     """
+    import html as _html
+
     if not enabled:
         return ""
 
     try:
         from dotenv import load_dotenv
 
-        load_dotenv(override=False)
         import os
+        load_dotenv()
+        # Resolve repo root (…/src/uit/pipeline.py → parents[2]) so .env loads even if cwd differs.
+        _repo_root = Path(__file__).resolve().parent.parent.parent
+        load_dotenv(_repo_root / ".env", override=False)
+        load_dotenv(override=False)
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            return ""
+            return _llm_notice_html(
+                "Plain-language interpretation was requested, but <code>OPENAI_API_KEY</code> was not found. "
+                "Set it in <code>.env</code> at the project root (same folder as <code>pyproject.toml</code>), "
+                "or export it in your shell, then re-run."
+            )
 
         from openai import OpenAI
 
@@ -377,16 +387,17 @@ Write:
 Keep it concise and readable for a compliance/business audience. Do NOT mention OpenAI, APIs, or prompts.
 """
 
-        resp = client.responses.create(
+        # Prefer Chat Completions (widely supported); Responses API varies by SDK/model.
+        resp = client.chat.completions.create(
             model=openai_model,
-            input=prompt,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
         )
-        text = (resp.output_text or "").strip()
+        text = (resp.choices[0].message.content or "").strip()
         if not text:
-            return ""
-
-        # Minimal escaping; keep it simple as <pre>-style block.
-        import html as _html
+            return _llm_notice_html(
+                "The LLM returned an empty response. Try a different <code>--openai-model</code> (e.g. <code>gpt-4o-mini</code>)."
+            )
 
         safe = _html.escape(text)
         return f"""
@@ -396,15 +407,29 @@ Keep it concise and readable for a compliance/business audience. Do NOT mention 
           <pre style="white-space:pre-wrap; margin:10px 0 0; font-size:13px; color: var(--text);">{safe}</pre>
         </div>
         """
-    except Exception:
-        return ""
+    except Exception as e:
+        msg = _html.escape(str(e)[:500])
+        return _llm_notice_html(
+            f"Plain-language interpretation failed: <code>{msg}</code>. "
+            "Check your API key, model name, and network access, then re-run."
+        )
+
+
+def _llm_notice_html(message: str) -> str:
+    return f"""
+        <div class="card" style="margin-top:12px; border-color: #8b5a2b; background: rgba(139,90,43,0.12);">
+          <h3 style="margin-bottom:6px">Plain-language interpretation</h3>
+          <div class="muted">Could not generate the LLM summary.</div>
+          <p style="margin:10px 0 0; font-size:14px; line-height:1.55;">{message}</p>
+        </div>
+        """
 
 def run_xgb_shap_causal(
     form4_trades: pd.DataFrame,
     cfg: PipelineConfig,
     *,
     llm_explain: bool = False,
-    openai_model: str = "gpt-4.1-mini",
+    openai_model: str = "gpt-4o-mini",
 ) -> dict[str, object]:
     """
     Train XGBoost -> SHAP global importance -> econml CausalForestDML ATE (demo).

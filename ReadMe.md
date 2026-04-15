@@ -42,7 +42,7 @@ uv run uit run --in-dir mock_data --artifacts-dir artifacts --llm-explain
 Optional model override:
 
 ```bash
-uv run uit run --in-dir mock_data --artifacts-dir artifacts --llm-explain --openai-model gpt-4.1-mini
+uv run uit run --in-dir mock_data --artifacts-dir artifacts --llm-explain --openai-model gpt-4o-mini
 ```
 
 Outputs:
